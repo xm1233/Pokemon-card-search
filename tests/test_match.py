@@ -1,3 +1,5 @@
+"""匹配规则单元测试：中文前缀、英文整词、撇号与套装 id 解析。"""
+
 import json
 from pathlib import Path
 

@@ -1,4 +1,6 @@
 fastapi
 uvicorn
+tcgapi
 tcgdex-sdk
+python-dotenv
 pytest

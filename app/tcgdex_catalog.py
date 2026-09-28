@@ -1,4 +1,4 @@
-"""Load English international cards for one species name."""
+"""通过 TCGdex 英文国际版 API 按物种名查宝可梦卡。"""
 
 import logging
 import threading
@@ -35,10 +35,10 @@ TYPE_ZH = {
 
 
 class TcgdexError(Exception):
-    """TCGdex could not be reached or its response could not be read."""
+    """TCGdex 无法访问或响应无法解析。"""
 
 
-class Catalog:
+class TcgdexCatalog:
     def __init__(self, species: list[dict], sdk: TCGdex | None = None):
         self.species = species
         self.english_names = {item["en"] for item in species}
@@ -56,6 +56,7 @@ class Catalog:
         zh_names = self.zh_names_for(english_name)
         if total == 0:
             return {
+                "source": "tcgdex",
                 "en": english_name,
                 "zhNames": zh_names,
                 "page": 1,
@@ -68,6 +69,7 @@ class Catalog:
         page = min(max(page, 1), pages)
         start = (page - 1) * PAGE_SIZE
         return {
+            "source": "tcgdex",
             "en": english_name,
             "zhNames": zh_names,
             "page": page,
@@ -204,6 +206,7 @@ def _detail(card) -> dict:
     if getattr(card, "set", None) is not None and card.set.cardCount is not None:
         official = card.set.cardCount.official
     return {
+        "source": "tcgdex",
         "id": card.id,
         "name": card.name,
         "localId": card.localId,

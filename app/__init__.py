@@ -1,1 +1,1 @@
-"""Simplified Chinese Pokémon card lookup."""
+"""简体中文宝可梦卡查应用包。"""

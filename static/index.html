@@ -155,13 +155,62 @@
 
     .meta { color: var(--muted); font-size: 0.86rem; }
 
+    .source-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+    }
+
+    .source-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.75rem 0.9rem;
+      border: 2px solid var(--line);
+      border-radius: 0.45rem;
+      background: var(--card);
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .source-card strong { font-size: 1rem; }
+
+    .source-card span { color: var(--muted); font-size: 0.86rem; }
+
+    .source-card[aria-pressed="true"] {
+      border-color: var(--seal);
+      box-shadow: inset 0 0 0 1px var(--seal);
+      background: #fff8f4;
+    }
+
     .pager {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: center;
-      gap: 1rem;
+      gap: 0.65rem 1rem;
       margin-top: 1.4rem;
     }
+
+    .pager label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-weight: 600;
+    }
+
+    .pager select {
+      font: inherit;
+      padding: 0.35rem 0.5rem;
+      border: 2px solid var(--ink);
+      border-radius: 0.3rem;
+      background: var(--card);
+    }
+
+    #pager-summary { color: var(--muted); font-size: 0.9rem; }
 
     button.nav, #close {
       border: 2px solid var(--ink);
@@ -231,8 +280,19 @@
     <header class="site">
       <p class="seal">EN</p>
       <h1>宝可梦卡查</h1>
-      <p>输入简体中文名，查看英文国际版卡牌。</p>
+      <p>输入简体中文名，查看宝可梦英文卡；可切换 TCG API（含参考价）或 TCGdex（免 API 额度）。</p>
     </header>
+
+    <div class="source-switch" role="group" aria-label="数据来源">
+      <button type="button" class="source-card" id="source-tcgapi" aria-pressed="true">
+        <strong>TCG API</strong>
+        <span>TCGPlayer 价格 · 仅宝可梦卡 · 有每日请求额度</span>
+      </button>
+      <button type="button" class="source-card" id="source-tcgdex" aria-pressed="false">
+        <strong>TCGdex</strong>
+        <span>英文国际版图鉴 · 免密钥 · 额度不够时可备用</span>
+      </button>
+    </div>
 
     <form id="search" role="search">
       <label for="q">宝可梦名称</label>
@@ -251,7 +311,10 @@
       <div id="grid"></div>
       <nav class="pager" aria-label="分页">
         <button id="prev" class="nav" type="button">上一页</button>
-        <span id="pager"></span>
+        <label for="page-select">页码
+          <select id="page-select" aria-label="选择页码"></select>
+        </label>
+        <span id="pager-summary"></span>
         <button id="next" class="nav" type="button">下一页</button>
       </nav>
     </section>
@@ -263,10 +326,11 @@
       <div id="detail-body"></div>
     </dialog>
 
-    <footer>卡牌数据来自 <a href="https://tcgdex.dev">TCGdex</a></footer>
+    <footer id="footer-note">卡牌与价格数据来自 <a href="https://tcgapi.dev/">TCG API</a>；备用数据源 <a href="https://tcgdex.dev/">TCGdex</a></footer>
   </div>
 
   <script>
+    // 流程：简体前缀 → 物种候选 → 选定后请求 /api/cards → 点开 /api/cards/{id}
     const q = document.querySelector("#q");
     const suggestions = document.querySelector("#suggestions");
     const suggestNote = document.querySelector("#suggest-note");
@@ -277,16 +341,33 @@
     const grid = document.querySelector("#grid");
     const prev = document.querySelector("#prev");
     const next = document.querySelector("#next");
-    const pager = document.querySelector("#pager");
+    const pageSelect = document.querySelector("#page-select");
+    const pagerSummary = document.querySelector("#pager-summary");
+    const sourceTcgapi = document.querySelector("#source-tcgapi");
+    const sourceTcgdex = document.querySelector("#source-tcgdex");
+    const footerNote = document.querySelector("#footer-note");
     const detail = document.querySelector("#detail");
     const detailBody = document.querySelector("#detail-body");
     const closeButton = document.querySelector("#close");
 
-    let matches = [];
+    let matches = []; // 当前前缀对应的物种候选
     let highlight = 0;
-    let selected = null;
+    let selected = null; // 用户已选中的 { zh, en }
     let page = 1;
-    let timer = 0;
+    let totalPages = 0;
+    let timer = 0; // 输入防抖，避免每个键都请求 /api/species
+    const STORAGE_KEY = "cardDataSource";
+    let dataSource = localStorage.getItem(STORAGE_KEY) === "tcgdex" ? "tcgdex" : "tcgapi";
+
+    applySourceUi();
+    sourceTcgapi.addEventListener("click", () => setDataSource("tcgapi"));
+    sourceTcgdex.addEventListener("click", () => setDataSource("tcgdex"));
+    pageSelect.addEventListener("change", () => {
+      const nextPage = Number(pageSelect.value);
+      if (nextPage >= 1 && nextPage <= totalPages) {
+        loadCards(nextPage);
+      }
+    });
 
     document.querySelector("#search").addEventListener("submit", (event) => {
       event.preventDefault();
@@ -330,6 +411,7 @@
       }
     });
 
+    /** 按输入前缀拉取物种候选（最多 30 条由后端截断） */
     async function loadSuggestions() {
       const query = q.value.trim();
       if (!query) {
@@ -404,6 +486,55 @@
       loadCards(1);
     }
 
+    function setDataSource(source) {
+      if (dataSource === source) {
+        return;
+      }
+      dataSource = source;
+      localStorage.setItem(STORAGE_KEY, source);
+      applySourceUi();
+      if (selected) {
+        loadCards(1);
+      }
+    }
+
+    function applySourceUi() {
+      const isApi = dataSource === "tcgapi";
+      sourceTcgapi.setAttribute("aria-pressed", isApi ? "true" : "false");
+      sourceTcgdex.setAttribute("aria-pressed", isApi ? "false" : "true");
+      footerNote.innerHTML = isApi
+        ? '当前：<a href="https://tcgapi.dev/">TCG API</a>（含 TCGPlayer 参考价）'
+        : '当前：<a href="https://tcgdex.dev/">TCGdex</a>（英文国际版，不消耗 TCG API 额度）';
+    }
+
+    function renderPageSelect(current, pages) {
+      pageSelect.replaceChildren();
+      totalPages = pages;
+      if (pages <= 0) {
+        pageSelect.disabled = true;
+        pagerSummary.textContent = "";
+        return;
+      }
+      pageSelect.disabled = pages <= 1;
+      for (let index = 1; index <= pages; index += 1) {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = "第 " + index + " 页";
+        if (index === current) {
+          option.selected = true;
+        }
+        pageSelect.append(option);
+      }
+      pagerSummary.textContent = "共 " + pages + " 页";
+    }
+
+    function sourceErrorFallback() {
+      return dataSource === "tcgapi"
+        ? "TCG API 暂时查不到，可切换到 TCGdex 再试"
+        : "TCGdex 暂时查不到，请稍后再试";
+    }
+
+    /** 仅在选择物种后查卡；en 必须来自字典候选 */
     async function loadCards(nextPage) {
       if (!selected) {
         return;
@@ -412,22 +543,33 @@
       setStatus("正在查找卡牌…", "");
       results.hidden = true;
       const response = await fetch(
-        "/api/cards?en=" + encodeURIComponent(selected.en) + "&page=" + page
+        "/api/cards?en="
+          + encodeURIComponent(selected.en)
+          + "&page="
+          + page
+          + "&source="
+          + encodeURIComponent(dataSource)
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setStatus(data.detail || "TCGdex 暂时查不到，请稍后再试", "error");
+        setStatus(data.detail || sourceErrorFallback(), "error");
         return;
       }
       if (data.total === 0) {
-        setStatus("这只宝可梦在英文国际版里没有卡", "");
+        setStatus(
+          dataSource === "tcgapi"
+            ? "这只宝可梦在 TCG API 里没有匹配的宝可梦卡"
+            : "这只宝可梦在 TCGdex 英文卡库里没有匹配结果",
+          ""
+        );
         return;
       }
       page = data.page;
       setStatus("");
-      resultTitle.textContent = selected.zh + " · " + selected.en;
+      const sourceTag = dataSource === "tcgapi" ? "TCG API" : "TCGdex";
+      resultTitle.textContent = selected.zh + " · " + selected.en + "（" + sourceTag + "）";
       resultCount.textContent = "共 " + data.total + " 张";
-      pager.textContent = "第 " + data.page + " / " + data.pages + " 页";
+      renderPageSelect(data.page, data.pages);
       prev.disabled = data.page <= 1;
       next.disabled = data.page >= data.pages;
       grid.replaceChildren();
@@ -449,10 +591,11 @@
         name.textContent = card.name;
         const setName = document.createElement("span");
         setName.className = "meta";
-        setName.textContent = "套装 " + (card.setName || card.setId);
+        setName.textContent = "套装 " + (card.setName || "—");
         const number = document.createElement("span");
         number.className = "meta";
-        number.textContent = "编号 " + card.localId;
+        const extra = [card.localId && "编号 " + card.localId, card.printing, card.marketPrice != null && "$" + card.marketPrice].filter(Boolean);
+        number.textContent = extra.join(" · ") || "—";
         button.append(name, setName, number);
         button.addEventListener("click", () => openDetail(card.id));
         grid.append(button);
@@ -462,10 +605,15 @@
 
     async function openDetail(cardId) {
       setStatus("正在打开卡牌…", "");
-      const response = await fetch("/api/cards/" + encodeURIComponent(cardId));
+      const response = await fetch(
+        "/api/cards/"
+          + encodeURIComponent(cardId)
+          + "?source="
+          + encodeURIComponent(dataSource)
+      );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setStatus(data.detail || "TCGdex 暂时查不到，请稍后再试", "error");
+        setStatus(data.detail || sourceErrorFallback(), "error");
         return;
       }
       setStatus("");
@@ -484,8 +632,7 @@
       title.textContent = data.name;
       const setLine = document.createElement("p");
       setLine.className = "meta";
-      const number = data.officialCount ? data.localId + " / " + data.officialCount : data.localId;
-      setLine.textContent = "套装 " + data.setName + " · 编号 " + number;
+      setLine.textContent = "套装 " + (data.setName || "—") + (data.localId ? " · 编号 " + data.localId : "");
       const hp = document.createElement("p");
       hp.textContent = "生命值 " + (data.hp == null ? "—" : data.hp);
       const typeLabel = document.createElement("p");
@@ -497,7 +644,32 @@
         li.textContent = type.zh;
         chips.append(li);
       });
-      info.append(title, setLine, hp, typeLabel, chips);
+      info.append(title, setLine);
+      if (data.rarity) {
+        const rarity = document.createElement("p");
+        rarity.className = "meta";
+        rarity.textContent = "稀有度 " + data.rarity;
+        info.append(rarity);
+      }
+      info.append(hp, typeLabel, chips);
+
+      if (data.prices && data.prices.length) {
+        const priceTitle = document.createElement("p");
+        priceTitle.textContent = "参考价（TCGPlayer）";
+        info.append(priceTitle);
+        data.prices.forEach((row) => {
+          const line = document.createElement("p");
+          line.className = "meta";
+          const parts = [row.printing, row.marketPrice != null && "市价 $" + row.marketPrice, row.lowPrice != null && "最低 $" + row.lowPrice].filter(Boolean);
+          line.textContent = parts.join(" · ");
+          info.append(line);
+        });
+      }
+      if (data.tcgplayerUrl) {
+        const link = document.createElement("p");
+        link.innerHTML = '<a href="' + data.tcgplayerUrl + '" target="_blank" rel="noopener">在 TCGPlayer 查看</a>';
+        info.append(link);
+      }
 
       const attackTitle = document.createElement("p");
       attackTitle.textContent = "招式";

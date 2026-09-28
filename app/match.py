@@ -1,20 +1,22 @@
-"""Chinese species prefix lookup and English whole-word card matching."""
+"""中文物种前缀匹配与英文卡名整词过滤。"""
 
 import unicodedata
 
+# 候选列表最多返回条数
 SUGGESTION_LIMIT = 30
+# PokeAPI / 卡面可能使用的各类撇号，统一后再比对
 _APOSTROPHES = "’‘ʼ＇`"
 
 
 def normalize_apostrophes(name: str) -> str:
-    """Treat curly and straight apostrophes as the same character."""
+    """弯引号与直引号视为同一字符（如 Farfetch'd）。"""
     for character in _APOSTROPHES:
         name = name.replace(character, "'")
     return name
 
 
 def apostrophe_forms(name: str) -> list[str]:
-    """Spellings to send to TCGdex so both quote styles are searched."""
+    """生成要向 TCGdex 查询的英文名变体，覆盖两种撇号写法。"""
     straight = normalize_apostrophes(name)
     forms = [straight]
     if "'" in straight:
@@ -27,7 +29,7 @@ def apostrophe_forms(name: str) -> list[str]:
 
 
 def species_by_prefix(species: list[dict], query: str) -> list[dict]:
-    """Return species whose Simplified Chinese name starts with query."""
+    """简体名以 query 为前缀的物种（前缀匹配，非包含）。"""
     query = query.strip()
     if not query:
         return []
@@ -35,12 +37,9 @@ def species_by_prefix(species: list[dict], query: str) -> list[dict]:
 
 
 def card_name_matches_species(card_name: str, species_name: str) -> bool:
-    """True when species_name appears as a whole word in card_name.
+    """卡名中是否出现物种英文名，且前后为词界（非字母）。
 
-    Boundaries are the ends of the string or any character that is not a
-    Unicode letter. ``Mew`` matches ``Mew ex`` and does not match ``Mewtwo``.
-    ``Pikachu`` matches ``Pikachu-GX`` and ``Dark Charizard`` matches
-    ``Charizard``.
+    例如 Mew 匹配 Mew ex，不匹配 Mewtwo；Pikachu 匹配 Pikachu-GX。
     """
     if not card_name or not species_name:
         return False
@@ -52,6 +51,7 @@ def card_name_matches_species(card_name: str, species_name: str) -> bool:
         if index < 0:
             return False
         end = index + len(needle)
+        # 物种名前后不能紧挨其它字母，避免 Mew 误匹配 Mewtwo
         before_ok = index == 0 or not _is_letter(haystack[index - 1])
         after_ok = end == len(haystack) or not _is_letter(haystack[end])
         if before_ok and after_ok:
@@ -60,7 +60,10 @@ def card_name_matches_species(card_name: str, species_name: str) -> bool:
 
 
 def set_id_from_card_id(card_id: str, set_ids: list[str]) -> str | None:
-    """Pick the longest set id that is a prefix of ``setId-localId``."""
+    """从全局卡 id（如 swsh3-136）解析套装 id。
+
+    套装 id 可能含连字符（tk-ex-latia），取最长前缀匹配。
+    """
     best: str | None = None
     best_length = -1
     for set_id in set_ids:
@@ -72,6 +75,7 @@ def set_id_from_card_id(card_id: str, set_ids: list[str]) -> str | None:
 
 
 def local_id_sort_key(local_id: str) -> tuple:
+    """卡编号排序：纯数字按数值，非数字（如 TG01）排在后面。"""
     if local_id.isdigit():
         return (0, int(local_id), "")
     return (1, 0, local_id)
