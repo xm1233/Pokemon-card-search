@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>宝可梦卡查</title>
+  <style>
+    :root {
+      --ink: #241c16;
+      --muted: #6d6258;
+      --paper: #f3eadb;
+      --card: #fffdf8;
+      --line: #d9cbb8;
+      --seal: #9c2f2f;
+      --seal-dark: #7a2222;
+      --focus: #1f4d3a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(156, 47, 47, 0.08), transparent 28rem),
+        var(--paper);
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 3rem;
+    }
+
+    header.site h1 {
+      margin: 0.2rem 0;
+      font-size: 2.2rem;
+      letter-spacing: 0.04em;
+    }
+
+    header.site p { margin: 0; color: var(--muted); }
+
+    .seal {
+      display: inline-block;
+      margin: 0;
+      padding: 0.1rem 0.45rem;
+      color: white;
+      background: var(--seal);
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+    }
+
+    form { position: relative; margin-top: 1.5rem; }
+
+    label { display: block; font-weight: 650; margin-bottom: 0.4rem; }
+
+    input[type="search"] {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border: 2px solid var(--ink);
+      border-radius: 0.4rem;
+      background: var(--card);
+      color: var(--ink);
+      font: inherit;
+      font-size: 1.05rem;
+    }
+
+    input:focus, button:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    #suggestions {
+      position: absolute;
+      z-index: 2;
+      left: 0;
+      right: 0;
+      margin: 0.3rem 0 0;
+      padding: 0.3rem;
+      list-style: none;
+      background: var(--card);
+      border: 2px solid var(--ink);
+      border-radius: 0.4rem;
+      max-height: 18rem;
+      overflow: auto;
+    }
+
+    #suggestions button {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      padding: 0.55rem 0.7rem;
+      border-radius: 0.25rem;
+      cursor: pointer;
+    }
+
+    #suggestions button[aria-selected="true"],
+    #suggestions button:hover {
+      background: #f6e4d8;
+    }
+
+    .note, #status { min-height: 1.4rem; color: var(--muted); }
+
+    #status[data-kind="error"] { color: var(--seal-dark); }
+
+    .result-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: baseline;
+      margin-top: 0.5rem;
+    }
+
+    .result-head h2 { margin: 0; font-size: 1.4rem; }
+
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .card-button {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      padding: 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      background: var(--card);
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(36, 28, 22, 0.05);
+    }
+
+    .card-button:hover { border-color: var(--seal); }
+
+    .card-button img, .placeholder {
+      width: 100%;
+      aspect-ratio: 63 / 88;
+      object-fit: cover;
+      border-radius: 0.3rem;
+      background: #efe4d4;
+    }
+
+    .card-button strong { display: block; }
+
+    .meta { color: var(--muted); font-size: 0.86rem; }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 1.4rem;
+    }
+
+    button.nav, #close {
+      border: 2px solid var(--ink);
+      background: var(--card);
+      color: var(--ink);
+      font: inherit;
+      padding: 0.45rem 0.9rem;
+      border-radius: 0.3rem;
+      cursor: pointer;
+    }
+
+    button.nav:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    dialog {
+      width: min(560px, calc(100% - 2rem));
+      border: 2px solid var(--ink);
+      border-radius: 0.6rem;
+      background: var(--card);
+      color: var(--ink);
+      padding: 1rem 1rem 1.3rem;
+    }
+
+    dialog::backdrop { background: rgba(36, 28, 22, 0.45); }
+
+    .detail-top { display: flex; justify-content: flex-end; }
+
+    .detail-layout {
+      display: grid;
+      grid-template-columns: minmax(140px, 220px) 1fr;
+      gap: 1rem;
+    }
+
+    .detail-layout img {
+      width: 100%;
+      border-radius: 0.4rem;
+      background: #efe4d4;
+    }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.2rem 0 0; padding: 0; list-style: none; }
+
+    .chips li, .cost {
+      display: inline-block;
+      padding: 0.05rem 0.4rem;
+      border-radius: 999px;
+      background: #f6e4d8;
+      font-size: 0.85rem;
+    }
+
+    .attack { margin: 0.8rem 0 0; padding-top: 0.7rem; border-top: 1px solid var(--line); }
+
+    .attack h3 { margin: 0; font-size: 1rem; }
+
+    .attack p { margin: 0.3rem 0 0; }
+
+    footer { margin-top: 2.5rem; color: var(--muted); font-size: 0.9rem; }
+
+    footer a { color: var(--seal-dark); }
+
+    @media (max-width: 640px) {
+      .detail-layout { grid-template-columns: 1fr; }
+      .detail-layout img { max-width: 220px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="site">
+      <p class="seal">EN</p>
+      <h1>宝可梦卡查</h1>
+      <p>输入简体中文名，查看英文国际版卡牌。</p>
+    </header>
+
+    <form id="search" role="search">
+      <label for="q">宝可梦名称</label>
+      <input id="q" type="search" autocomplete="off" placeholder="例如：皮卡" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestions">
+      <ul id="suggestions" role="listbox" hidden></ul>
+      <p id="suggest-note" class="note" hidden></p>
+    </form>
+
+    <p id="status" role="status"></p>
+
+    <section id="results" hidden>
+      <div class="result-head">
+        <h2 id="result-title"></h2>
+        <p id="result-count"></p>
+      </div>
+      <div id="grid"></div>
+      <nav class="pager" aria-label="分页">
+        <button id="prev" class="nav" type="button">上一页</button>
+        <span id="pager"></span>
+        <button id="next" class="nav" type="button">下一页</button>
+      </nav>
+    </section>
+
+    <dialog id="detail">
+      <div class="detail-top">
+        <button id="close" type="button">关闭</button>
+      </div>
+      <div id="detail-body"></div>
+    </dialog>
+
+    <footer>卡牌数据来自 <a href="https://tcgdex.dev">TCGdex</a></footer>
+  </div>
+
+  <script>
+    const q = document.querySelector("#q");
+    const suggestions = document.querySelector("#suggestions");
+    const suggestNote = document.querySelector("#suggest-note");
+    const status = document.querySelector("#status");
+    const results = document.querySelector("#results");
+    const resultTitle = document.querySelector("#result-title");
+    const resultCount = document.querySelector("#result-count");
+    const grid = document.querySelector("#grid");
+    const prev = document.querySelector("#prev");
+    const next = document.querySelector("#next");
+    const pager = document.querySelector("#pager");
+    const detail = document.querySelector("#detail");
+    const detailBody = document.querySelector("#detail-body");
+    const closeButton = document.querySelector("#close");
+
+    let matches = [];
+    let highlight = 0;
+    let selected = null;
+    let page = 1;
+    let timer = 0;
+
+    document.querySelector("#search").addEventListener("submit", (event) => {
+      event.preventDefault();
+      chooseHighlighted();
+    });
+
+    q.addEventListener("input", () => {
+      if (selected && q.value.trim() !== selected.zh) {
+        selected = null;
+        results.hidden = true;
+        setStatus("");
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(loadSuggestions, 150);
+    });
+
+    q.addEventListener("keydown", (event) => {
+      if (suggestions.hidden || matches.length === 0) {
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setHighlight(Math.min(highlight + 1, matches.length - 1));
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setHighlight(Math.max(highlight - 1, 0));
+      } else if (event.key === "Escape") {
+        hideSuggestions();
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        chooseHighlighted();
+      }
+    });
+
+    prev.addEventListener("click", () => loadCards(page - 1));
+    next.addEventListener("click", () => loadCards(page + 1));
+    closeButton.addEventListener("click", () => detail.close());
+    detail.addEventListener("click", (event) => {
+      if (event.target === detail) {
+        detail.close();
+      }
+    });
+
+    async function loadSuggestions() {
+      const query = q.value.trim();
+      if (!query) {
+        hideSuggestions();
+        suggestNote.hidden = true;
+        return;
+      }
+      const response = await fetch("/api/species?q=" + encodeURIComponent(query));
+      const data = await response.json();
+      matches = data.items;
+      highlight = 0;
+      renderSuggestions();
+      if (data.total === 0) {
+        suggestNote.hidden = false;
+        suggestNote.textContent = "没有找到这个名字，请继续输入";
+      } else if (data.total > data.items.length) {
+        suggestNote.hidden = false;
+        suggestNote.textContent = "只显示前 30 个，请继续输入";
+      } else {
+        suggestNote.hidden = true;
+      }
+    }
+
+    function renderSuggestions() {
+      suggestions.replaceChildren();
+      if (matches.length === 0) {
+        suggestions.hidden = true;
+        q.setAttribute("aria-expanded", "false");
+        return;
+      }
+      matches.forEach((item, index) => {
+        const li = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("role", "option");
+        button.setAttribute("aria-selected", index === highlight ? "true" : "false");
+        button.textContent = item.zh + "（" + item.en + "）";
+        button.addEventListener("click", () => choose(item));
+        button.addEventListener("mouseenter", () => setHighlight(index));
+        li.append(button);
+        suggestions.append(li);
+      });
+      suggestions.hidden = false;
+      q.setAttribute("aria-expanded", "true");
+    }
+
+    function setHighlight(index) {
+      highlight = index;
+      suggestions.querySelectorAll("button").forEach((button, itemIndex) => {
+        button.setAttribute("aria-selected", itemIndex === highlight ? "true" : "false");
+      });
+    }
+
+    function hideSuggestions() {
+      matches = [];
+      suggestions.hidden = true;
+      suggestions.replaceChildren();
+      q.setAttribute("aria-expanded", "false");
+    }
+
+    function chooseHighlighted() {
+      if (!suggestions.hidden && matches[highlight]) {
+        choose(matches[highlight]);
+      }
+    }
+
+    function choose(item) {
+      selected = item;
+      q.value = item.zh;
+      hideSuggestions();
+      suggestNote.hidden = true;
+      loadCards(1);
+    }
+
+    async function loadCards(nextPage) {
+      if (!selected) {
+        return;
+      }
+      page = nextPage;
+      setStatus("正在查找卡牌…", "");
+      results.hidden = true;
+      const response = await fetch(
+        "/api/cards?en=" + encodeURIComponent(selected.en) + "&page=" + page
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setStatus(data.detail || "TCGdex 暂时查不到，请稍后再试", "error");
+        return;
+      }
+      if (data.total === 0) {
+        setStatus("这只宝可梦在英文国际版里没有卡", "");
+        return;
+      }
+      page = data.page;
+      setStatus("");
+      resultTitle.textContent = selected.zh + " · " + selected.en;
+      resultCount.textContent = "共 " + data.total + " 张";
+      pager.textContent = "第 " + data.page + " / " + data.pages + " 页";
+      prev.disabled = data.page <= 1;
+      next.disabled = data.page >= data.pages;
+      grid.replaceChildren();
+      data.items.forEach((card) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "card-button";
+        if (card.image) {
+          const image = document.createElement("img");
+          image.src = card.image;
+          image.alt = card.name;
+          button.append(image);
+        } else {
+          const placeholder = document.createElement("div");
+          placeholder.className = "placeholder";
+          button.append(placeholder);
+        }
+        const name = document.createElement("strong");
+        name.textContent = card.name;
+        const setName = document.createElement("span");
+        setName.className = "meta";
+        setName.textContent = "套装 " + (card.setName || card.setId);
+        const number = document.createElement("span");
+        number.className = "meta";
+        number.textContent = "编号 " + card.localId;
+        button.append(name, setName, number);
+        button.addEventListener("click", () => openDetail(card.id));
+        grid.append(button);
+      });
+      results.hidden = false;
+    }
+
+    async function openDetail(cardId) {
+      setStatus("正在打开卡牌…", "");
+      const response = await fetch("/api/cards/" + encodeURIComponent(cardId));
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setStatus(data.detail || "TCGdex 暂时查不到，请稍后再试", "error");
+        return;
+      }
+      setStatus("");
+      detailBody.replaceChildren();
+
+      const layout = document.createElement("div");
+      layout.className = "detail-layout";
+      if (data.image) {
+        const image = document.createElement("img");
+        image.src = data.image;
+        image.alt = data.name;
+        layout.append(image);
+      }
+      const info = document.createElement("div");
+      const title = document.createElement("h2");
+      title.textContent = data.name;
+      const setLine = document.createElement("p");
+      setLine.className = "meta";
+      const number = data.officialCount ? data.localId + " / " + data.officialCount : data.localId;
+      setLine.textContent = "套装 " + data.setName + " · 编号 " + number;
+      const hp = document.createElement("p");
+      hp.textContent = "生命值 " + (data.hp == null ? "—" : data.hp);
+      const typeLabel = document.createElement("p");
+      typeLabel.textContent = "属性";
+      const chips = document.createElement("ul");
+      chips.className = "chips";
+      (data.types.length ? data.types : [{ zh: "—" }]).forEach((type) => {
+        const li = document.createElement("li");
+        li.textContent = type.zh;
+        chips.append(li);
+      });
+      info.append(title, setLine, hp, typeLabel, chips);
+
+      const attackTitle = document.createElement("p");
+      attackTitle.textContent = "招式";
+      info.append(attackTitle);
+      if (!data.attacks.length) {
+        const empty = document.createElement("p");
+        empty.className = "meta";
+        empty.textContent = "这张卡没有招式";
+        info.append(empty);
+      }
+      data.attacks.forEach((attack) => {
+        const block = document.createElement("article");
+        block.className = "attack";
+        const heading = document.createElement("h3");
+        const cost = (attack.cost || []).map((type) => type.zh).join(" ");
+        heading.textContent = [cost, attack.name, attack.damage].filter(Boolean).join(" ");
+        block.append(heading);
+        if (attack.effect) {
+          const effect = document.createElement("p");
+          effect.textContent = attack.effect;
+          block.append(effect);
+        }
+        info.append(block);
+      });
+
+      layout.append(info);
+      detailBody.append(layout);
+      detail.showModal();
+    }
+
+    function setStatus(message, kind) {
+      status.textContent = message;
+      if (kind) {
+        status.dataset.kind = kind;
+      } else {
+        delete status.dataset.kind;
+      }
+    }
+  </script>
+</body>
+</html>
