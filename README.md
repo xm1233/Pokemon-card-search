@@ -45,7 +45,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 1. 中文按前缀匹配。至少输入 1 个字。「皮卡」能命中「皮卡丘」，「丘」不能。候选最多 30 条。
 2. 确定物种后，用英文名调用 TCG API 搜索（`type=Cards`），再在本地整词过滤。`Pikachu V` 会留下，`Mew` 不会留下 `Mewtwo`。
-3. 通过 `bulk/cards` 读取 `custom_attributes.cardType`，只保留 `Pokemon`（不含训练家、场地、能量等）。
+3. 读取 `custom_attributes.cardType`，只保留 `Pokemon`（不含训练家、场地、能量等）。Pro 套餐用 `bulk/cards` 批量拉取；免费档会自动改为逐张 `cards.get`，同一只宝可梦首次查询会多占若干次每日额度。
 4. 弯引号 `’` 与直引号 `'` 在整词匹配时视为相同。
 
 接口只接受字典里的英文名。首次查询某物种除搜索外还会按批拉取卡种信息，会多消耗若干次每日额度。

@@ -8,7 +8,12 @@ from typing import Any
 
 import httpx
 from tcgapi import TCGApi
-from tcgapi.errors import NotFoundError, RateLimitError, TcgApiError as TcgApiSdkError
+from tcgapi.errors import (
+    NotFoundError,
+    RateLimitError,
+    TierError,
+    TcgApiError as TcgApiSdkError,
+)
 
 from app.card_type import BULK_CARDS_CHUNK, is_pokemon_card_attributes
 from app.match import card_name_matches_species, local_id_sort_key
@@ -152,6 +157,15 @@ class TcgApiCatalog:
     def _pokemon_card_ids(self, card_ids: list[int]) -> set[int]:
         if not card_ids:
             return set()
+        try:
+            return self._pokemon_card_ids_bulk(card_ids)
+        except TierError:
+            logger.info(
+                "bulk/cards 需要 Pro 套餐，改用逐张 cards.get 读取 cardType（会多消耗每日额度）"
+            )
+            return self._pokemon_card_ids_single(card_ids)
+
+    def _pokemon_card_ids_bulk(self, card_ids: list[int]) -> set[int]:
         pokemon: set[int] = set()
         for start in range(0, len(card_ids), BULK_CARDS_CHUNK):
             chunk = card_ids[start : start + BULK_CARDS_CHUNK]
@@ -159,6 +173,17 @@ class TcgApiCatalog:
             for card in resp.data:
                 if is_pokemon_card_attributes(card.custom_attributes):
                     pokemon.add(card.id)
+        return pokemon
+
+    def _pokemon_card_ids_single(self, card_ids: list[int]) -> set[int]:
+        pokemon: set[int] = set()
+        for card_id in card_ids:
+            try:
+                resp = self.client.cards.get(card_id)
+            except NotFoundError:
+                continue
+            if is_pokemon_card_attributes(resp.data.custom_attributes):
+                pokemon.add(card_id)
         return pokemon
 
 
