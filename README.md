@@ -63,6 +63,10 @@ python scripts/build_species.py
 
 运行时不会访问 PokeAPI。改完 `data/species.json` 后需重启服务。
 
+## 使用的 Skill
+
+页面视觉使用 [oil-ui](https://github.com/oil-oil/oil-ui)。本地文件在 `.cursor/skills/oil-ui`。
+
 ## 已知限制
 
 - 字典只有默认物种，没有区域形态别名（如「阿罗拉六尾」）。
